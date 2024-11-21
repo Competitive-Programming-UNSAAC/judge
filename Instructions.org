@@ -1,0 +1,376 @@
+Contest setup instructions (with DOMjudge 8.2.1)
+
+* DOMjudge Docker setup
+** Install Docker (Ubuntu)
+Uninstall all conflicting docker packages:
+#+begin_src sh
+  for pkg in docker.io docker-doc docker-compose podman-docker containerd runc; do sudo apt-get remove $pkg; done
+#+end_src
+
+Update the apt package index and install packages to allow apt to use a repository
+over HTTPS
+#+begin_src sh
+  sudo apt update
+  sudo apt install ca-certificates curl gnupg
+#+end_src
+
+Add Docker’s official GPG key:
+#+begin_src sh
+  sudo install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  sudo chmod a+r /etc/apt/keyrings/docker.gpg
+#+end_src
+
+Set up the repository:
+#+begin_src sh
+  echo \
+      "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+    "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
+      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+#+end_src
+
+Install Docker Engine
+#+begin_src sh
+  sudo apt update
+  sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+#+end_src
+
+Verify that the Docker Engine installation is successful by running the hello-world
+image
+#+begin_src sh
+  sudo docker run hello-world
+#+end_src
+
+** Create custom Docker images (not working)
+Let:
+<domjudge source directory>: source directory of the DOMjudge program to be
+transformed into a docker image
+<path to domjudge-packaging>: directory of the domjudge-packaging folder
+
+Create tarball of the program inside the domjudge-packaging folder
+#+begin_src sh
+  tar --exclude-vcs -czf <path to domjudge-packaging>/docker/domjudge.tar.gz <domjudge source directory>
+#+end_src
+
+Build the DOMjudge image
+#+begin_src sh
+  cd <path to domjudge-packaging>/docker
+  sudo docker build -t domjudge -f domserver/Dockerfile .
+#+end_src
+
+** Enable cgroups (only if working on Linux)
+Edit grub config to add cgroup memory and swap accounting to the boot options
+Edit the /etc/default/grub file and change
+#+begin_src sh
+  GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
+#+end_src
+
+to
+#+begin_src sh
+  GRUB_CMDLINE_LINUX_DEFAULT="quiet cgroup_enable=memory swapaccount=1"
+#+end_src
+
+Check if cgroups v2 is enabled by default on the machine (to learn, but probably
+yes). If so, use the following line instead in the previous step
+#+begin_src sh
+  GRUB_CMDLINE_LINUX_DEFAULT="quiet cgroup_enable=memory swapaccount=1 systemd.unified_cgroup_hierarchy=0"
+#+end_src
+
+Update the grub and reboot:
+#+begin_src sh
+  sudo update-grub
+  reboot
+#+end_src
+
+** Run the docker images
+Create a designated folder and the docker-compose.yaml file inside it
+
+Run mariadb and domserver:
+#+begin_src sh
+  sudo docker compose up -d mariadb domserver
+#+end_src
+
+Enter http://localhost/ (or http://localhost:12345/) and login with the initial admin password (change them
+on Users -> admin -> Password), which can be seen with:
+#+begin_src sh
+  sudo docker exec -it domserver cat /opt/domjudge/domserver/etc/initial_admin_password.secret
+#+end_src
+
+Modify the docker-compose.yaml file, change the JUDGEDAEMON_PASSWORD variable with the
+correct password for the judgehost, which can be seen with:
+#+begin_src sh
+  sudo docker exec -it domserver cat /opt/domjudge/domserver/etc/restapi.secret
+#+end_src
+
+Run the judgehosts
+#+begin_src sh
+  sudo docker compose up
+#+end_src
+
+** Make some configurations
+MySQL's innodb_log_file_size is set to 96 MB. You may want to raise this to 10x the
+maximum of the test case size and output (storage) limit (now 48.8 MB).
+
+Go to Users -> admin -> Check 'Balloon runner'
+
+Go to Configuration settings
+
+Display:
+#+begin_src sh
+  Show affiliation logos: Yes
+  Show sample output: Yes
+#+end_src
+
+External systems:
+#+begin_src sh
+  Data source: configuration data external
+#+end_src
+
+Save and recalculate caches
+
+*** Enable the mono compiler
+Enter the chroot of the judgehost
+#+begin_src sh
+  sudo docker exec -it judgehost-0 ./opt/domjudge/judgehost/bin/dj_run_chroot
+#+end_src
+
+Install mono
+
+apt install wget
+wget https://packages.microsoft.com/config/debian/11/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
+dpkg -i packages-microsoft-prod.deb
+rm packages-microsoft-prod.deb
+apt-get update && apt-get install -y dotnet-sdk-7.0
+#+begin_src sh
+  apt update
+  apt install mono-complete
+#+end_src
+
+Activate C# on the interface:
+Languages -> csharp -> Allow submit
+
+** Make test submissions
+Download the examples from the domjudge tarball:
+https://www.domjudge.org/releases/domjudge-8.2.1.tar.gz
+Extract tarball
+#+begin_src sh
+  tar -xf domjudge-8.2.1.tar.gz
+#+end_src
+
+Login with Username 'demo' and Password 'demo' and make some submissions.
+
+** Useful docker commands
+Stop and remove ALL images, containers
+#+begin_src sh
+  sudo docker stop $(sudo docker ps -aq) && sudo docker rm $(sudo docker ps -aq) && sudo docker rmi $(sudo docker images -q) && sudo docker system prune –a
+#+end_src
+
+
+
+
+
+
+
+
+
+
+* DOMjudge local installation (judgehost not working yet)
+** Install necessary programs
+*** For the DOMserver
+sudo apt update
+sudo apt upgrade
+# Add php8.2 repositories
+sudo dpkg -l | grep php | tee packages.txt
+sudo add-apt-repository ppa:ondrej/php
+sudo apt update
+# Install packages
+sudo apt install acl zip unzip mysql-server apache2 php8.2 php8.2-fpm php8.2-gd php8.2-cli php8.2-intl php8.2-mbstring php8.2-mysql php8.2-curl php-json php8.2-xml php8.2-zip composer ntp python3-yaml gcc g++ libcgroup-dev make
+sudo apt update
+sudo apt upgrade
+# reboot
+*** For the judgehost
+sudo apt update
+sudo apt install make pkg-config sudo debootstrap libcgroup-dev php8.2-cli php8.2-curl php-json php8.2-xml php8.2-zip lsof procps gcc g++
+sudo apt remove apport
+sudo apt autoremove
+
+*** For teams documentation (optional)
+sudo apt update
+sudo apt install python3-sphinx python3-sphinx-rtd-theme rst2pdf fontconfig python3-yaml
+
+*** Compilers
+**** C, C++:
+sudo apt install gcc g++
+**** Python3
+sudo apt install python3
+**** Java
+sudo apt update
+sudo apt upgrade
+sudo apt install default-jdk
+**** C#
+sudo apt update
+sudo apt install mono-complete
+**** JavaScript
+sudo apt update
+sudo apt install nodejs
+**** Ruby
+sudo apt install ruby-full
+** Configure Mysql password
+sudo mysql -u root
+USE mysql;
+FLUSH PRIVILEGES;
+ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'newpassword';
+SET PASSWORD FOR 'root'@'localhost' = 'newpassword';
+FLUSH PRIVILEGES;
+exit;
+sudo service mysql restart
+
+** Install the DOMserver
+# Download from
+https://www.domjudge.org/releases/domjudge-8.2.1.tar.gz
+# Extract tarball
+tar -xf domjudge-8.2.1.tar.gz
+# Go to the extracted tarball folder and execute:
+./configure --prefix=$HOME/domjudge
+make domserver
+sudo make install-domserver
+
+** Setup the database
+# Go to <installation-path>/domserver/bin and execute
+./dj_setup_database genpass
+./dj_setup_database -u root -r install
+
+** Give special permissions to apache2
+sudo chown -R :www-data /home/wozmit/
+
+** Make links
+sudo ln -s <installation-path>/domserver/etc/apache.conf /etc/apache2/conf-available/domjudge.conf
+sudo ln -s <installation-path>/domserver/etc/domjudge-fpm.conf /etc/php/8.2/fpm/pool.d/domjudge.conf
+sudo a2enmod proxy_fcgi setenvif rewrite
+sudo a2enconf php8.2-fpm domjudge
+# Edit the files:
+# /etc/apache2/conf-available/domjudge.conf
+# /etc/php/8.2/fpm/pool.d/domjudge.conf
+# to your needs.
+# Edit the alias in /etc/apache2/conf-available/domjudge.conf:
+# Change
+Alias /domjudge /...
+# To
+Alias /cuscontest /...
+# Reload services
+sudo service php8.2-fpm reload
+sudo service apache2 reload
+# Optionally
+sudo systemctl restart apache2
+sudo systemctl reload apache2
+
+** Test interface
+# Go to localhost/cuscontest/
+# The initial password for the 'admin' user is located in
+# <installation-path>/domserver/etc/initial_admin_password.secret
+
+# Change password: Users -> admin -> password
+
+*** Fix config checker errors
+# Edith the /etc/php/8.2/fpm/php.ini file
+max_file_uploads = 400
+date.timezone = America/Lima
+post_max_size = 128M
+upload_max_filesize = 128M
+
+# Reload php
+sudo service php8.2-fpm reload
+
+# Edit the /etc/mysql/my.cnf file
+# If there is a [mysqld] section already, do not create it,
+# but write the next lines in that section
+[mysqld]
+max_connections = 1000
+innodb_log_file_size = 2G
+max_allowed_packet = 500M
+
+# Restart mysql
+sudo service mysql restart
+
+*** Modify configuration settings
+# Judging section
+Memory limit: 8000000
+Process limit: 350
+Sourcefiles limit: 256
+Script memory limit: 30971520
+# External systems
+Data source: configuration data external
+# Display
+Show affiliation logos: Yes
+Show sample output: Yes
+# Save and recalculate caches
+
+** Install the judgehost
+# Go to the extracted tarball folder and execute:
+./configure --prefix=$HOME/domjudge
+make judgehost
+sudo make install-judgehost
+
+# Add group and user to the system to act as judgehost
+sudo groupadd domjudge-run
+sudo useradd -d /nonexistent -g domjudge-run -M -s /bin/false domjudge-run
+
+# Copy the <installation-path>/judgehost/etc/sudoers-domjudge file to
+# the /etc/sudoers.d/ folder
+sudo cp <installation-path>/judgehost/etc/sudoers-domjudge /etc/sudoers.d/
+
+# Go to <installation-path>/judgehost/bin/
+# Build chroot environment in /chroot/domjudge
+sudo ./dj_make_chroot -d /chroot/domjudge -D Ubuntu -a amd64
+(select y?)
+
+# Edit grub config to add cgroup memory and swap accounting to the boot options
+# Edit the /etc/default/grub file and change
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
+# to
+GRUB_CMDLINE_LINUX_DEFAULT="quiet cgroup_enable=memory swapaccount=1"
+
+# Check if cgroups v2 is enabled by default on the machine (to learn, but probably
+# yes). If so, use the following line instead in the previous step
+GRUB_CMDLINE_LINUX_DEFAULT="quiet cgroup_enable=memory swapaccount=1 systemd.unified_cgroup_hierarchy=0"
+
+# Run
+sudo update-grub
+reboot
+
+# Check that the file /proc/cmdline contains the added kernel options
+
+# Create the actual cgroups that DOMjudge will use
+sudo systemctl enable create-cgroups --now
+
+# Edith the <installation-path>/judgehost/etc/restapi.secret file
+# to use the actual URL (with the configured alias) e.g., change
+http://localhost/domjudge/api
+# to
+http://localhost/cuscontest/api
+
+# Try to run the judgehost. Move to <installation-path>/judgehost/ and run
+./bin/judgedaemon
+
+** Install some compilers
+# Acess a shell inside the chroot
+sudo ./dj_run_chroot
+
+** Building team documentation (if latex is installed)
+# Go to the extracted tarball folder (?) and execute:
+make docs
+sudo make install-docs
+
+** Test submissions with some files in the downloaded folder/examples
+
+
+* Contest setup
+
+Copy the images to certain folders
+#+begin_src sh
+  sudo docker cp PRINC.png domserver:/opt/domjudge/domserver/webapp/public/images/affiliations/
+  sudo docker cp INTER.png domserver:/opt/domjudge/domserver/webapp/public/images/affiliations/
+  sudo docker cp AVANZ.png domserver:/opt/domjudge/domserver/webapp/public/images/affiliations/
+  sudo docker cp banner.png domserver:/opt/domjudge/domserver/webapp/public/images/
+#+end_src
+

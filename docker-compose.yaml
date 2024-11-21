@@ -1,0 +1,107 @@
+version: '3.8'
+
+networks:
+  domjudge:
+    name: domjudge
+
+services:
+  mariadb:
+    container_name: mariadb
+    image: mariadb:latest
+    hostname: mariadb
+    networks:
+      - domjudge
+    ports:
+      - 13306:3306
+    environment:
+      - MYSQL_ROOT_PASSWORD=domjudge
+      - MYSQL_USER=domjudge
+      - MYSQL_PASSWORD=djpw
+      - MYSQL_DATABASE=domjudge
+    command: --max-connections=1000 --max-allowed-packet=512M
+    volumes:
+      - /var/lib/mysql
+      
+  domserver:
+    container_name: domserver
+    image: domjudge/domserver:8.2.1
+    hostname: domserver
+    networks:
+      - domjudge
+    ports:
+      - 80:80
+    depends_on:
+      - mariadb
+    environment:
+      - CONTAINER_TIMEZONE=America/Lima
+      - MYSQL_ROOT_PASSWORD=domjudge
+      - MYSQL_USER=domjudge
+      - MYSQL_PASSWORD=djpw
+      - MYSQL_DATABASE=domjudge
+      - MYSQL_HOST=mariadb
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+  
+  judgehost-0:
+    container_name: judgehost-0
+    image: domjudge/judgehost:8.2.1
+    hostname: judgedaemon-0
+    privileged: true
+    networks:
+      - domjudge
+    depends_on:
+      - domserver
+    environment:
+      - CONTAINER_TIMEZONE=America/Lima
+      - DAEMON_ID=0
+      - JUDGEDAEMON_PASSWORD=1vHAFHX5sCjEWDoExF1DGTGOTMdov4YC
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+
+  judgehost-1:
+    container_name: judgehost-1
+    image: domjudge/judgehost:8.2.1
+    hostname: judgedaemon-1
+    privileged: true
+    networks:
+      - domjudge
+    depends_on:
+      - domserver
+    environment:
+      - CONTAINER_TIMEZONE=America/Lima
+      - DAEMON_ID=1
+      - JUDGEDAEMON_PASSWORD=1vHAFHX5sCjEWDoExF1DGTGOTMdov4YC
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+
+  judgehost-2:
+    container_name: judgehost-2
+    image: domjudge/judgehost:8.2.1
+    hostname: judgedaemon-2
+    privileged: true
+    networks:
+      - domjudge
+    depends_on:
+      - domserver
+    environment:
+      - CONTAINER_TIMEZONE=America/Lima
+      - DAEMON_ID=2
+      - JUDGEDAEMON_PASSWORD=1vHAFHX5sCjEWDoExF1DGTGOTMdov4YC
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+
+  judgehost-3:
+    container_name: judgehost-3
+    image: domjudge/judgehost:8.2.1
+    hostname: judgedaemon-3
+    privileged: true
+    networks:
+      - domjudge
+    depends_on:
+      - domserver
+    environment:
+      - CONTAINER_TIMEZONE=America/Lima
+      - DAEMON_ID=3
+      - JUDGEDAEMON_PASSWORD=1vHAFHX5sCjEWDoExF1DGTGOTMdov4YC
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
